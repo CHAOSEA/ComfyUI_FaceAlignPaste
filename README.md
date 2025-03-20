@@ -72,7 +72,7 @@ High-quality image rotation node providing precise image rotation while maintain
 
 ```bash
 cd "path_to_your_comfyui/ComfyUI/custom_nodes"
-git clone https://github.com/your-username/ComfyUI_FaceAlignPaste.git
+git clone https://github.com/CHAOSWOLRD/ComfyUI_FaceAlignPaste.git
 
 ## 模型文件 | Model Files
 
