@@ -4,7 +4,6 @@
 
 这是一个用于 ComfyUI 的基础人脸处理节点集合，提供智能人脸对齐、粘贴和自动适配功能，让您的人物图像处理工作流程更加高效和精准。
 
-
 This is an advanced face processing node collection for ComfyUI, providing intelligent face alignment, pasting, and auto-fitting functions to make your character image workflow more efficient and precise.
 
 ---
@@ -86,7 +85,3 @@ git clone https://github.com/CHAOSEA/ComfyUI_FaceAlignPaste.git
 - `models/shape_predictor_68_face_landmarks.dat` - dlib 人脸关键点检测模型，用于精确定位人脸的 68 个特征点
 
 这些模型文件已包含在节点包中，无需单独下载。如果您遇到模型加载错误，请确保文件路径正确且文件完整。
-<<<<<<< HEAD
->>>>>>> 0e3e389 (初始提交：智能人脸对齐与粘贴节点集合)
-=======
->>>>>>> 0026c0e8dcc9a597dc7f30a21fafb0b6607a3689

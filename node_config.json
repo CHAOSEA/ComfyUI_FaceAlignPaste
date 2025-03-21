@@ -1,0 +1,9 @@
+{
+  "name": "ComfyUI_FaceAlignPaste",
+  "description": "智能人脸对齐与粘贴节点集合 | Smart Face Alignment and Pasting Node Collection",
+  "author": "CHAOSEA",
+  "version": "1.0.0",
+  "repository": "https://github.com/CHAOSEA/ComfyUI_FaceAlignPaste",
+  "tags": ["face", "alignment", "processing", "composition"],
+  "dependencies": ["numpy", "opencv-python", "torch", "Pillow"]
+}

@@ -1,0 +1,15 @@
+[project]
+name = "ComfyUI_FaceAlignPaste"
+description = "Smart Face Alignment and Pasting Node"
+version = "1.0.0"
+license = {file = "LICENSE"}
+dependencies = ["numpy", "opencv-python", "torch", "Pillow", "mediapipe", "dlib"]
+
+[project.urls]
+Repository = "https://github.com/CHAOSEA/ComfyUI_FaceAlignPaste"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "CHAOSEA"
+DisplayName = "ComfyUI_FaceAlignPaste"
+Icon = ""
