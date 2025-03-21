@@ -1,0 +1,6 @@
+numpy
+opencv-python
+torch
+Pillow
+mediapipe
+dlib 
