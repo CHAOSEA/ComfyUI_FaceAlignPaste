@@ -40,7 +40,8 @@ Single face alignment node that can detect faces and perform precise alignment, 
 
 ### 2. Face Align Double @ CHAOS
 
-双人脸对齐节点，可以同时处理两张人脸图像并进行对齐，适用于人物对话场景或合影构图。
+双人脸对齐节点，可以同时处理两张人脸图像并进行对齐，适用于人物对话场景或合影构图。![Face Align Double 示例](workflow_examples/Face_Align_Double.png)
+
 
 Double face alignment node that can process two face images simultaneously, suitable for character dialogue scenes or group photo compositions.
 
