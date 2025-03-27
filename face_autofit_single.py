@@ -34,6 +34,7 @@ class FaceAutoFitSingle:
     _mediapipe_face_mesh = None
     _dlib_detector = None
     _dlib_predictor = None
+    _face_analyzer = None  # 添加InsightFace模型缓存
     
     # 添加缓存变量
     _last_image_hash = None
@@ -51,7 +52,7 @@ class FaceAutoFitSingle:
                 "move_y": ("FLOAT", {"default": 0.0, "min": -100.0, "max": 100.0, "step": 1.0, "display": "slider"}),
                 "face_size": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 2.0, "step": 0.05}),
                 "angle": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.5}),
-                "detection_method": (["auto", "opencv", "mediapipe", "dlib", "none"], {"default": "dlib"}),
+                "detection_method": (["insightface", "auto", "opencv", "mediapipe", "dlib", "none"], {"default": "insightface"}),
             },
             "optional": {
                 "custom_width": ("INT", {"default": 1024, "min": 256, "max": 4096, "step": 64}),
@@ -59,8 +60,8 @@ class FaceAutoFitSingle:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
-    RETURN_NAMES = ("image", "mask")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT")  # 修改返回类型，使用INT表示mode_code
+    RETURN_NAMES = ("image", "mask", "mode_code")  # 修改返回名称，从gender改为mode_code
     CATEGORY = "image/face"
     FUNCTION = "process"
 
@@ -93,7 +94,7 @@ class FaceAutoFitSingle:
                 
                 # 智能缩放
                 with Timer("智能缩放"):
-                    scaled_face, scaled_mask, face_center_scaled = self._smart_scaling(
+                    scaled_face, scaled_mask, face_center_scaled = self.smart_scaling(
                         np_face, np_mask, target_h, params["head_ratio"], face_size, face_center, face_info
                     )
                 
@@ -114,8 +115,27 @@ class FaceAutoFitSingle:
                 # 检查人物是否脱离画布
                 self._check_boundary(final_mask, "人物")
                 
+                # 获取性别信息
+                is_male = face_info["gender"] == "male"
+                
+                # 计算mode_code: 0-3为女性，4-7为男性
+                mode_mapping = {
+                    "portrait": 0,   # 肖像模式
+                    "half_body": 1,  # 半身模式
+                    "full_body": 2,  # 全身模式
+                    "custom": 3      # 自定义模式
+                }
+                
+                # 获取模式基础编码
+                mode_code = mode_mapping.get(mode, 0)
+                
+                # 如果是男性，加上偏移量4
+                if is_male:
+                    mode_code += 4
+                
                 # 转换为输出格式
-                return self._wrap_outputs(final_face, final_mask)
+                image_out, mask_out = self._wrap_outputs(final_face, final_mask)
+                return (image_out, mask_out, mode_code)
             
         except Exception as e:
             logger.error(f"处理失败: {str(e)}")
@@ -124,19 +144,47 @@ class FaceAutoFitSingle:
             # 创建空白图像作为输出
             blank = np.full_like(face_image[0].cpu().numpy(), 0.0)
             blank_tensor = torch.from_numpy(blank).unsqueeze(0)
-            return (blank_tensor, face_mask)
-
+            return (blank_tensor, face_mask, 0)  # 出错时默认返回女性肖像(0)
+    
     # 工具方法 --------------------------------------------------
     def _calculate_dimensions(self, mode, custom_width, custom_height) -> Tuple[int, int]:
         """智能尺寸计算系统"""
         mode_params = {
             "portrait": (768, 1024),    # 肖像模式 - 3:4比例更适合肖像照
             "half_body": (768, 1024),   # 半身模式
-            "full_body": (768, 1024),   # 全身模式
+            "full_body": (768, 1536),   # 全身模式 - 修改为1:2比例，更适合全身照
             "custom": (custom_width, custom_height)  # 自定义模式
         }
         
         return mode_params[mode]
+    
+    @classmethod
+    def _get_face_analyzer(cls):
+        """单例模式获取InsightFace分析器"""
+        if cls._face_analyzer is None:
+            try:
+                import insightface
+                from insightface.app import FaceAnalysis
+                
+                model_dir = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "models",
+                    "insightface"
+                )
+                
+                analyzer = FaceAnalysis(
+                    root=model_dir,
+                    providers=['CPUExecutionProvider'],
+                    allowed_modules=['detection', 'recognition', 'genderage'],
+                    name="buffalo_l"
+                )
+                analyzer.prepare(ctx_id=0, det_size=(640, 640))
+                cls._face_analyzer = analyzer
+                logger.info("InsightFace模型加载成功")
+            except Exception as e:
+                logger.error(f"InsightFace初始化失败: {str(e)}")
+                return None
+        return cls._face_analyzer
     
     def _analyze_face(self, image, mask) -> Dict[str, Any]:
         """分析人脸特征，包括性别估计、人脸大小等"""
@@ -148,51 +196,85 @@ class FaceAutoFitSingle:
             logger.info("使用缓存的人脸分析结果")
             return FaceAutoFitSingle._last_face_info.copy()
         
+        # 初始化face_info
         face_info = {
-            "gender": "unknown",  # 性别: "male", "female", "unknown"
-            "face_height": None,  # 人脸高度
-            "face_width": None,   # 人脸宽度
-            "face_rect": None,    # 人脸矩形 (x, y, w, h)
-            "eyes_center": None,  # 眼睛中心点 (x, y)
-            "confidence": 0.0     # 检测置信度
+            "gender": "unknown",
+            "face_height": None,
+            "face_width": None,
+            "face_rect": None,
+            "eyes_center": None,
+            "confidence": 0.0,
+            "detection_method": "none"  # 添加检测方法标记
         }
         
-        # 根据选择的检测方法进行人脸分析
-        detection_methods = []
+        # 按优先级尝试不同的检测方法
+        detection_success = False
         
-        if self.detection_method == "auto":
-            detection_methods = ["dlib", "opencv", "mask", "mediapipe"]  # 调整顺序，优先使用dlib
+        # 确定要使用的检测方法
+        detection_methods = []
+        if self.detection_method == "insightface":
+            detection_methods = ["insightface", "dlib", "opencv", "mediapipe", "mask"]
+        elif self.detection_method == "auto":
+            detection_methods = ["insightface", "dlib", "opencv", "mediapipe", "mask"]
         elif self.detection_method == "none":
-            # 仅使用遮罩分析
             detection_methods = ["mask"]
         else:
-            detection_methods = [self.detection_method, "mask"]  # 总是添加遮罩作为备选
+            detection_methods = [self.detection_method, "mask"]
         
-        # 尝试使用选定的方法进行人脸检测
+        # 按顺序尝试各种方法
         for method in detection_methods:
-            if method == "dlib" and face_info["confidence"] < 0.8:
-                self._analyze_face_dlib(image, face_info)
-                
-                # 如果dlib检测成功且置信度足够高，就不再尝试其他方法
-                if face_info["confidence"] >= 0.8:
+            if method == "insightface":
+                # 尝试使用InsightFace
+                analyzer = self._get_face_analyzer()
+                if analyzer is not None:
+                    try:
+                        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image.shape[2] == 3 else image
+                        faces = analyzer.get(image_rgb)
+                        
+                        if faces:
+                            max_face = max(faces, key=lambda face: 
+                                (face.bbox[2] - face.bbox[0]) * (face.bbox[3] - face.bbox[1]))
+                            
+                            bbox = max_face.bbox.astype(int)
+                            x, y, x2, y2 = bbox
+                            w, h = x2 - x, y2 - y
+                            
+                            face_info.update({
+                                "gender": "male" if max_face.gender == 1 else "female",
+                                "face_height": h,
+                                "face_width": w,
+                                "face_rect": (x, y, w, h),
+                                "confidence": float(max_face.det_score),
+                                "eyes_center": (x + w//2, y + int(h * 0.4)),
+                                "detection_method": "insightface"  # 标记检测方法
+                            })
+                            
+                            if face_info["confidence"] > 0.5:
+                                logger.info(f"InsightFace性别检测结果: {face_info['gender']}, 置信度: {face_info['confidence']:.3f}")
+                                detection_success = True
+                                break
+                    except Exception as e:
+                        logger.warning(f"InsightFace分析失败: {str(e)}")
+            elif method == "dlib":
+                if self._analyze_face_dlib(image, face_info):
+                    face_info["detection_method"] = "dlib"  # 标记检测方法
+                    detection_success = True
                     break
-                    
-            elif method == "opencv" and face_info["confidence"] < 0.7:
-                self._analyze_face_opencv(image, face_info)
-                
-                # 如果OpenCV检测成功且置信度足够高，就不再尝试其他方法
-                if face_info["confidence"] >= 0.7:
+            elif method == "opencv":
+                if self._analyze_face_opencv(image, face_info):
+                    face_info["detection_method"] = "opencv"  # 标记检测方法
+                    detection_success = True
                     break
-                    
-            elif method == "mediapipe" and face_info["confidence"] < 0.9:
-                self._analyze_face_mediapipe(image, face_info)
-                
-                # 如果MediaPipe检测成功且置信度足够高，就不再尝试其他方法
-                if face_info["confidence"] >= 0.9:
+            elif method == "mediapipe":
+                if self._analyze_face_mediapipe(image, face_info):
+                    face_info["detection_method"] = "mediapipe"  # 标记检测方法
+                    detection_success = True
                     break
-                    
-            elif method == "mask" and face_info["confidence"] < 0.5:
-                self._analyze_face_mask(image, mask, face_info)
+            elif method == "mask":
+                if self._analyze_face_mask(image, mask, face_info):
+                    face_info["detection_method"] = "mask"  # 标记检测方法
+                    detection_success = True
+                    break
         
         # 如果仍然没有检测到眼睛中心，使用图像中心点上移1/4处
         if face_info["eyes_center"] is None:
@@ -482,9 +564,9 @@ class FaceAutoFitSingle:
             params["head_ratio"] = 0.15    # 调整头部比例，更小一些以留出更多身体空间
             params["eye_position_ratio"] = 0.22  # 将眼睛位置调高，约为画面高度的22%处
         elif mode == "full_body":
-            # 全身模式
-            params["head_ratio"] = 0.10
-            params["eye_position_ratio"] = 0.15
+            # 全身模式 - 修改这里的参数
+            params["head_ratio"] = 0.08    # 将头部比例从0.10降低到0.08
+            params["eye_position_ratio"] = 0.12  # 将眼睛位置从0.15降低到0.12
         
         # 根据性别微调参数
         if face_info["gender"] == "male":
@@ -582,15 +664,20 @@ class FaceAutoFitSingle:
         
         return rotated_img, rotated_mask, rotated_center
     
-    def _smart_scaling(self, image, mask, target_h, head_ratio, face_size, face_center, face_info) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int]]:
+    # 修复方法名称，从_smart_scaling改为smart_scaling
+    def smart_scaling(self, image, mask, target_h, head_ratio, face_size, face_center, face_info) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int]]:
         """智能缩放算法 - 根据人脸比例调整，保持人脸中心不变"""
+        # 添加全局缩放系数，使face_size=1时相当于原来的face_size=1.3
+        global_scale_factor = 1.3
+        adjusted_face_size = face_size * global_scale_factor
+        
         # 优先使用检测到的人脸区域进行缩放
         if face_info["face_height"] is not None:
             try:
                 # 使用人脸高度计算缩放比例
                 face_height = face_info["face_height"]
                 target_face_height = target_h * head_ratio
-                scale_factor = (target_face_height / face_height) * face_size
+                scale_factor = (target_face_height / face_height) * adjusted_face_size
                 
                 # 强制限制缩放比例在合理范围内
                 min_scale = 0.1
@@ -639,7 +726,7 @@ class FaceAutoFitSingle:
                 # 假设遮罩高度的40%是人脸高度
                 estimated_face_height = mask_height * 0.4
                 target_face_height = target_h * head_ratio
-                scale_factor = (target_face_height / estimated_face_height) * face_size
+                scale_factor = (target_face_height / estimated_face_height) * adjusted_face_size
                 
                 # 强制限制缩放比例在合理范围内
                 min_scale = 0.1
@@ -670,7 +757,7 @@ class FaceAutoFitSingle:
         # 如果所有方法都失败，使用默认缩放
         try:
             # 默认缩放 - 使整个图像高度为目标高度的70%
-            scale_factor = (target_h * 0.7) / image.shape[0] * face_size
+            scale_factor = (target_h * 0.7) / image.shape[0] * adjusted_face_size
             
             # 强制限制缩放比例在合理范围内
             min_scale = 0.1

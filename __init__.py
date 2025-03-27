@@ -46,3 +46,24 @@ try:
     logger.info("成功加载 ImageRotateCHAOS 节点")
 except Exception as e:
     logger.error(f"加载 ImageRotateCHAOS 节点失败: {str(e)}")
+
+try:
+    from .gender_recognition_node import GenderRecognitionNode
+    NODE_CLASS_MAPPINGS["GenderRecognitionNode"] = GenderRecognitionNode
+    NODE_DISPLAY_NAME_MAPPINGS["GenderRecognitionNode"] = "Gender Recognition"
+    logger.info("成功加载 GenderRecognitionNode 节点")
+except Exception as e:
+    logger.error(f"加载 GenderRecognitionNode 节点失败: {str(e)}")
+
+# 删除旧的导入语句，只保留新的导入语句
+try:
+    from .prompt_selector import PromptSelectorDoubleCHAOS, PromptSelectorSingleCHAOS
+    NODE_CLASS_MAPPINGS["PromptSelectorDoubleCHAOS"] = PromptSelectorDoubleCHAOS
+    NODE_DISPLAY_NAME_MAPPINGS["PromptSelectorDoubleCHAOS"] = "Prompt Selector Double @ CHAOS"
+    NODE_CLASS_MAPPINGS["PromptSelectorSingleCHAOS"] = PromptSelectorSingleCHAOS
+    NODE_DISPLAY_NAME_MAPPINGS["PromptSelectorSingleCHAOS"] = "Prompt Selector Single @ CHAOS"
+    logger.info("成功加载 Prompt Selector 节点")
+except Exception as e:
+    logger.error(f"加载 Prompt Selector 节点失败: {str(e)}")
+
+VERSION = "1.1.0"  # 更新版本号

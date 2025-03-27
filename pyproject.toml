@@ -10,6 +10,6 @@ Repository = "https://github.com/CHAOSEA/ComfyUI_FaceAlignPaste"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
-PublisherId = "CHAOSEA"
+PublisherId = "chaos"
 DisplayName = "ComfyUI_FaceAlignPaste"
 Icon = ""
